@@ -28,13 +28,13 @@ SDPS-Net is implemented in [PyTorch](https://pytorch.org/) and tested with Ubunt
 You are highly recommended to use Anaconda and create a new environment to run this code.
 ```shell
 # Create a new python3.7 environment named py3.7
-conda create -n py3.7 python=3.7
+conda create -n py3.7.1 python=3.7
 
 # Activate the created environment
-source activate py3.7
+source activate py3.7.1
 
 # Example commands for installing the dependencies 
-conda install pytorch torchvision cudatoolkit=9.0 -c pytorch
+conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.1 -c pytorch
 conda install -c anaconda scipy 
 conda install -c anaconda scikit-image 
 
