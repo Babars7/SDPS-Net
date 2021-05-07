@@ -11,7 +11,7 @@ class TrainOpts(BaseOpts):
         self.parser.add_argument('--milestones',  default=[5, 10, 15, 20, 25], nargs='+', type=int)
         self.parser.add_argument('--start_epoch', default=1,      type=int)
         self.parser.add_argument('--epochs',      default=20,     type=int)
-        self.parser.add_argument('--batch',       default=32,     type=int)
+        self.parser.add_argument('--batch',       default=4,     type=int)
         self.parser.add_argument('--val_batch',   default=8,      type=int)
         self.parser.add_argument('--init_lr',     default=0.0005, type=float)
         self.parser.add_argument('--lr_decay',    default=0.5,    type=float)
