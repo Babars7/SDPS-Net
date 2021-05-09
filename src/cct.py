@@ -111,7 +111,7 @@ class TransformerClassifier(nn.Module):
             for i in range(num_layers)])
         self.norm = nn.LayerNorm(embedding_dim)
 
-        self.fc = nn.Linear(embedding_dim, num_classes)
+        self.fc = nn.Linear(embedding_dim, num_classes) #it is here I have to modify MLP Head
         self.apply(self.init_weight)
 
     def forward(self, x):
@@ -131,12 +131,15 @@ class TransformerClassifier(nn.Module):
             x = blk(x)
         x = self.norm(x)
 
+        
         if self.seq_pool:
             x = torch.matmul(F.softmax(self.attention_pool(x), dim=1).transpose(-1, -2), x).squeeze(-2)
         else:
             x = x[:, 0]
 
-        x = self.fc(x)
+        #print('before', x.shape)
+        #x = self.fc(x) #MLP Head is right here
+        #print('after', x.shape)
         return x
 
     @staticmethod
