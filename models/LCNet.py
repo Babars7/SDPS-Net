@@ -45,7 +45,7 @@ def init_parser():
                         help='number of total epochs to run')
     parser.add_argument('--warmup', default=5, type=int, metavar='N',
                         help='number of warmup epochs')
-    parser.add_argument('-b', '--batch-size', default=1, type=int, #default=128
+    parser.add_argument('-b', '--batch-size', default=32, type=int, #default=128
                         metavar='N',
                         help='mini-batch size (default: 128)', dest='batch_size')
     parser.add_argument('--lr', default=0.0005, type=float,
@@ -57,14 +57,14 @@ def init_parser():
 
     parser.add_argument('-m', '--model',
                         type=str.lower,
-                        default='cct_2', dest='model')
+                        default='cct_7', dest='model')
 
     parser.add_argument('-p', '--positional-embedding',
                         type=str.lower,
                         choices=['learnable', 'sine', 'none'],
                         default='learnable', dest='positional_embedding')
 
-    parser.add_argument('--conv-layers', default=2, type=int,
+    parser.add_argument('--conv-layers', default=4, type=int,
                         help='number of convolutional layers (cct only)')
 
     parser.add_argument('--conv-size', default=3, type=int,
@@ -90,73 +90,14 @@ def init_parser():
 
 #####################################
 
-# Classification
-class FeatExtractor(nn.Module):
-    def __init__(self, batchNorm, c_in, c_out=256):
-        super(FeatExtractor, self).__init__()
-        self.conv1 = model_utils.conv(batchNorm, c_in, 64,    k=3, stride=2, pad=1)
-        self.conv2 = model_utils.conv(batchNorm, 64,   128,   k=3, stride=2, pad=1)
-        self.conv3 = model_utils.conv(batchNorm, 128,  128,   k=3, stride=1, pad=1)
-        self.conv4 = model_utils.conv(batchNorm, 128,  128,   k=3, stride=2, pad=1)
-        self.conv5 = model_utils.conv(batchNorm, 128,  128,   k=3, stride=1, pad=1)
-        self.conv6 = model_utils.conv(batchNorm, 128,  256,   k=3, stride=2, pad=1)
-        self.conv7 = model_utils.conv(batchNorm, 256,  256,   k=3, stride=1, pad=1)
-
-    def forward(self, inputs):
-        out = self.conv1(inputs)
-        out = self.conv2(out)
-        out = self.conv3(out)
-        out = self.conv4(out)
-        out = self.conv5(out)
-        out = self.conv6(out)
-        out = self.conv7(out)
-        return out
-
-class Classifier(nn.Module):
-    def __init__(self, batchNorm, c_in, other):
-        super(Classifier, self).__init__()
-        self.conv1 = model_utils.conv(batchNorm, 512,  256, k=3, stride=1, pad=1)
-        self.conv2 = model_utils.conv(batchNorm, 256,  256, k=3, stride=2, pad=1)
-        self.conv3 = model_utils.conv(batchNorm, 256,  256, k=3, stride=2, pad=1)
-        self.conv4 = model_utils.conv(batchNorm, 256,  256, k=3, stride=2, pad=1)
-        self.other = other
-        
-        self.dir_x_est = nn.Sequential(
-                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0),
-                    model_utils.outputConv(64, other['dirs_cls'], k=1, stride=1, pad=0))
-
-        self.dir_y_est = nn.Sequential(
-                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0),
-                    model_utils.outputConv(64, other['dirs_cls'], k=1, stride=1, pad=0))
-
-        self.int_est = nn.Sequential(
-                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0),
-                    model_utils.outputConv(64, other['ints_cls'], k=1, stride=1, pad=0))
-
-    def forward(self, inputs):
-        out = self.conv1(inputs)
-        out = self.conv2(out)
-        out = self.conv3(out)
-        out = self.conv4(out)#torch.Size([8, 256, 1, 1])
-        #print('out', out.shape)
-        outputs = {}
-        if self.other['s1_est_d']:
-            outputs['dir_x'] = self.dir_x_est(out) #torch.Size([32, 36, 1, 1])
-            #print('dir_x', outputs['dir_x'], outputs['dir_x'].shape)
-            outputs['dir_y'] = self.dir_y_est(out) #torch.Size([32, 36, 1, 1])
-            #print('dir_y', outputs['dir_y'], outputs['dir_y'].shape)
-        if self.other['s1_est_i']:
-            outputs['ints'] = self.int_est(out) #torch.Size([32, 20, 1, 1])
-            #print('ints', outputs['ints'], outputs['ints'].shape)
-        return outputs
 
 class LCNet(nn.Module):
     def __init__(self, fuse_type='max', batchNorm=False, c_in=3, other={}):
         super(LCNet, self).__init__()
-        self.featExtractor = FeatExtractor(batchNorm, c_in, 128)
-        self.classifier = Classifier(batchNorm, 256, other)
-        self.c_in      = c_in
-        self.fuse_type = fuse_type
+        #self.featExtractor = FeatExtractor(batchNorm, c_in, 128)
+        #self.classifier = Classifier(batchNorm, 256, other)
+        #self.c_in      = c_in
+        #self.fuse_type = fuse_type
         self.other     = other
 
         for m in self.modules():
@@ -167,6 +108,20 @@ class LCNet(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+
+        
+
+        self.dir_x_est = nn.Sequential( # 128 -> cct_2 256 -> cct_7 (embeding size)
+                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0), 
+                    model_utils.outputConv(64, other['dirs_cls'], k=1, stride=1, pad=0))
+
+        self.dir_y_est = nn.Sequential(
+                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0),
+                    model_utils.outputConv(64, other['dirs_cls'], k=1, stride=1, pad=0))
+
+        self.int_est = nn.Sequential(
+                    model_utils.conv(batchNorm, 256, 64,  k=1, stride=1, pad=0),
+                    model_utils.outputConv(64, other['ints_cls'], k=1, stride=1, pad=0))
     
 
     def prepareInputs(self, x):
@@ -217,24 +172,8 @@ class LCNet(nn.Module):
 
     def forward(self, x):
 
-
-        
-
-        ###################
-
-        #print('x:', len(x))
-        #print('x[0]:',list(x[0].shape))
-        #print('x[1]:',list(x[1].shape))
         inputs = self.prepareInputs(x)
-        #print('length:', len(inputs))
-        #print('input[0]:',list(inputs[0].shape))
-        #print('input[1]:',list(inputs[1].shape))
-        #print('input[2]:',list(inputs[2].shape))
 
-        ##############APROACH_1################
-
-        
-        
         global best_acc1
 
 
@@ -266,29 +205,35 @@ class LCNet(nn.Module):
         l_dirs_x, l_dirs_y, l_ints = [], [], []
         outputs= []
         for i in range(len(inputs)):
-            #print('types', type(inputs[i]))
+
             if (not args_cct.no_cuda) and torch.cuda.is_available():
                 inp = inputs[i].cuda(args_cct.gpu_id, non_blocking=True)
-                #print('yyyyyyyyyyyyyyy')
-            #print(type(inp), inp.size(), type(inputs[i]))
+
             out = self.model(inp)
             out = out.reshape(out.shape[0], out.shape[1], 1, 1)
-            #print('outputs', type(out), out[:,0:36].shape)
-            if self.other['s1_est_d']:
-                l_dirs_x.append(out[:,0:36])
-                l_dirs_y.append(out[:,36:72])
-            if self.other['s1_est_i']:
-                l_ints.append(out[:,72:92])
-            #outputs.append(out)
-            
+            out = out.clone().detach()
+            out = torch.tensor(out, dtype=torch.float,  device='cuda:0')
 
-        #outputs=outputs.reshape(outputs.shape[0], outputs.shape[0], 1, 1)
-        #print('outputs', type(outputs))
-        #if self.other['s1_est_d']:
-        #    l_dirs_x = outputs[:,0:36]
-        #    l_dirs_y = outputs[:,36:72]
-        #if self.other['s1_est_i']:
-        #    l_ints = outputs[:,72:92]
+            outputs = {}
+            if self.other['s1_est_d']:
+                outputs['dir_x'] = self.dir_x_est(out)
+                outputs['dir_y'] = self.dir_y_est(out)
+            if self.other['s1_est_i']:
+                outputs['ints'] = self.int_est(out)
+
+            if self.other['s1_est_d']:
+                l_dirs_x.append(outputs['dir_x'])
+                l_dirs_y.append(outputs['dir_y'])
+            if self.other['s1_est_i']:
+                l_ints.append(outputs['ints'])
+
+            #print('outputs', type(out), out[:,0:36].shape)
+            #if self.other['s1_est_d']:
+            #    l_dirs_x.append(out[:,0:36])
+            #    l_dirs_y.append(out[:,36:72])
+            #if self.other['s1_est_i']:
+            #   l_ints.append(out[:,72:92])
+
 
         pred = {}
         if self.other['s1_est_d']:
@@ -296,10 +241,12 @@ class LCNet(nn.Module):
             pred['dirs_y'] = torch.cat(l_dirs_y, 0).squeeze()
             #print('dict', getshape(pred), pred['dirs_x'].shape)
             pred['dirs']   = self.convertMidDirs(pred)
+            #print('dir_x', pred['dirs_x'].shape, pred['dirs_x'][1,:])
         if self.other['s1_est_i']:
             pred['ints'] = torch.cat(l_ints, 0).squeeze()
             if pred['ints'].ndimension() == 1:
                 pred['ints'] = pred['ints'].view(1, -1)
             pred['intens'] = self.convertMidIntens(pred, len(inputs))
+            #print('ints', (pred['ints'][1,:]).shape )
         #print('pred', getshape(pred))
         return pred
