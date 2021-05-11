@@ -29,6 +29,12 @@ def getshape(d):
         # Replace all non-dict values with None.
         return None
 
+def dumpTranfo(self, out):
+    out = out.reshape(out.shape[0], out.shape[1], 1, 1)
+    #out = out.clone().detach()
+    out = torch.tensor(out, dtype=torch.float,  device='cuda:0')
+    return out
+
 def init_parser():
     parser = argparse.ArgumentParser(description='CIFAR10 quick training script')
 
@@ -170,34 +176,35 @@ class LCNet(nn.Module):
         return ints
 
 
-    def forward(self, x):
+    def forward(self, x, model_CCT):
 
         inputs = self.prepareInputs(x)
 
         global best_acc1
 
 
-        img_size = 128
-        num_classes = 92 #36+36+20 (x,y,ints)
-        positional_embedding = 'learnable'
-        conv_layers = 2
-        conv_size = 3
-        patch_size = 4
+        #img_size = 128
+        #num_classes = 92 #36+36+20 (x,y,ints)
+        #positional_embedding = 'learnable'
+        #conv_layers = 2
+        #conv_size = 3
+        #patch_size = 4
 
 
-        parser = init_parser()
-        args_cct = parser.parse_args()
+        #parser = init_parser()
+        #args_cct = parser.parse_args()
 
-        self.model = cct_models.__dict__[args_cct.model](img_size=img_size,
-                                            num_classes=num_classes,
-                                            positional_embedding=args_cct.positional_embedding,
-                                            n_conv_layers=args_cct.conv_layers,
-                                            kernel_size=args_cct.conv_size,
-                                            patch_size=args_cct.patch_size)
+        #self.model = cct_models.__dict__[args_cct.model](img_size=img_size,
+                                            #num_classes=num_classes,
+        #                                    positional_embedding=args_cct.positional_embedding,
+        #                                    n_conv_layers=args_cct.conv_layers,
+        #                                    kernel_size=args_cct.conv_size,
+        #                                    patch_size=args_cct.patch_size)
         ####################
-        if (not args_cct.no_cuda) and torch.cuda.is_available():
-            torch.cuda.set_device(args_cct.gpu_id)
-            self.model.cuda(args_cct.gpu_id)
+        self.model =  model_CCT
+        if (not args.no_cuda) and torch.cuda.is_available():
+            torch.cuda.set_device(args.gpu_id)
+            self.model.cuda(args.gpu_id)
             #print('xxxxxxxxxxxxxxxxxx')
         
 
@@ -206,13 +213,18 @@ class LCNet(nn.Module):
         outputs= []
         for i in range(len(inputs)):
 
-            if (not args_cct.no_cuda) and torch.cuda.is_available():
-                inp = inputs[i].cuda(args_cct.gpu_id, non_blocking=True)
+            if (not args.no_cuda) and torch.cuda.is_available():
+                inp = inputs[i].cuda(args.gpu_id, non_blocking=True)
 
             out = self.model(inp)
             out = out.reshape(out.shape[0], out.shape[1], 1, 1)
-            out = out.clone().detach()
+            out = out.clone().detach().requires_grad_(True)
             out = torch.tensor(out, dtype=torch.float,  device='cuda:0')
+
+            #x_out, y_out, ints_out = self.model(inp)
+            #x_out = dumpTranfo(self, x_out)
+            #y_out = dumpTranfo(self, y_out)
+            #ints_out = dumpTranfo(self, ints_out)
 
             outputs = {}
             if self.other['s1_est_d']:
