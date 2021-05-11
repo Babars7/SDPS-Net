@@ -1,6 +1,8 @@
 import torch
 import os
 from utils import eval_utils
+import itertools
+
 
 class Stage1ClsCrit(object): # First Stage, Light classification criterion
     def __init__(self, args):
@@ -49,6 +51,7 @@ class Stage1ClsCrit(object): # First Stage, Light classification criterion
         return out_loss
      
     def backward(self):
+        #print('loss', self.loss)
         self.loss.backward()
 
 class Stage2Crit(object): # Second stage
@@ -118,6 +121,7 @@ class Stage2Crit(object): # Second stage
         self.loss.backward()
 
 def getOptimizer(args, params):
+
     args.log.printWrite('=> Using %s solver for optimization' % (args.solver))
     if args.solver == 'adam':
         optimizer = torch.optim.Adam(params, args.init_lr, betas=(args.beta_1, args.beta_2))
@@ -144,12 +148,14 @@ def loadRecords(path, model, optimizer):
         raise Exception("=> no checkpoint found at '{}'".format(path))
     return records, start_epoch
 
-def configOptimizer(args, model):
+def configOptimizer(args, model, model_CCT):
     records = None
-    optimizer = getOptimizer(args, model.parameters())
+    print('parameters', type(model.parameters()))
+    #optimizer_CCT = getOptimizer(args, itertools.chain(model_CCT.parameters(),model.parameters()))
+    optimizer = getOptimizer(args, itertools.chain(model_CCT.parameters(),model.parameters()))
     if args.resume:
         args.log.printWrite("=> Resume loading checkpoint '{}'".format(args.resume))
-        records, start_epoch = loadRecords(args.resume, model, optimizer)
+        records, start_epoch = loadRecords(args.resume, model_CCT, optimizer )
         args.start_epoch = start_epoch
     scheduler = getLrScheduler(args, optimizer)
     return optimizer, scheduler, records
