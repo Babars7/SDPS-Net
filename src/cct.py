@@ -65,7 +65,7 @@ class TransformerClassifier(nn.Module):
                  num_layers=12,
                  num_heads=12,
                  mlp_ratio=4.0,
-                 num_classes=1000,
+                 #num_classes=1000,
                  dropout_rate=0.1,
                  attention_dropout=0.1,
                  stochastic_depth_rate=0.1,
@@ -111,37 +111,46 @@ class TransformerClassifier(nn.Module):
             for i in range(num_layers)])
         self.norm = nn.LayerNorm(embedding_dim)
 
-        self.fc = nn.Linear(embedding_dim, num_classes) #it is here I have to modify MLP Head
+        self.fc_dirx = nn.Linear(embedding_dim, 36) #it is here I have to modify MLP Head
+        self.fc_diry = nn.Linear(embedding_dim, 36)
+        self.fc_intens = nn.Linear(embedding_dim, 20)
+        
         self.apply(self.init_weight)
 
     def forward(self, x):
-        if self.positional_emb is None and x.size(1) < self.sequence_length:
+        #print('classifierinput', x.shape)
+        if self.positional_emb is None and x.size(1) < self.sequence_length: #note done
             x = F.pad(x, (0, 0, 0, self.n_channels - x.size(1)), mode='constant', value=0)
 
         if not self.seq_pool:
-            cls_token = self.class_emb.expand(x.shape[0], -1, -1)
+            cls_token = self.class_emb.expand(x.shape[0], -1, -1) #not done
             x = torch.cat((cls_token, x), dim=1)
 
-        if self.positional_emb is not None:
+        if self.positional_emb is not None: #this is done
             x += self.positional_emb
-
+        #print('afterpositionalembeding', x.shape)
         x = self.dropout(x)
 
-        for blk in self.blocks:
+        for blk in self.blocks: #Transformer encoder layer
             x = blk(x)
         x = self.norm(x)
-
+        #print('aftertransformer', x.shape)
         
-        if self.seq_pool:
+        if self.seq_pool: #Sequence Pooling
             x = torch.matmul(F.softmax(self.attention_pool(x), dim=1).transpose(-1, -2), x).squeeze(-2)
         else:
             x = x[:, 0]
+        ##################
+        #print('afterseqpool', x.shape)
+        #x_out = self.fc_dirx(x)
+        #print('afterMLP1', x_out.shape)
+        #y_out = self.fc_diry(x)
+        #print('afterMLP2', y_out.shape)
+        #ints_out = self.fc_intens(x)
 
-        #print('before', x.shape)
-        #x = self.fc(x) #MLP Head is right here
-        #print('after', x.shape)
+        #return x_out, y_out, ints_out
+        ######
         return x
-
     @staticmethod
     def init_weight(m):
         if isinstance(m, nn.Linear):
@@ -277,6 +286,7 @@ class CCT(nn.Module):
 def _cct(num_layers, num_heads, mlp_ratio, embedding_dim,
          kernel_size=3, stride=None, padding=None,
          *args, **kwargs):
+    #print('2')
     stride = stride if stride is not None else max(1, (kernel_size // 2) - 1)
     padding = padding if padding is not None else max(1, (kernel_size // 2))
     return CCT(num_layers=num_layers,
@@ -325,6 +335,7 @@ def cct_6(*args, **kwargs):
 
 
 def cct_7(*args, **kwargs):
+    #print('1')
     return _cct(num_layers=7, num_heads=4, mlp_ratio=2, embedding_dim=256,
                 *args, **kwargs)
 
