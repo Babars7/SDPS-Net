@@ -1,7 +1,15 @@
 from models import model_utils
 from utils  import eval_utils, time_utils
 
-def train(args, loader, model, criterion, optimizer, log, epoch, recorder):
+def getshape(d):
+    if isinstance(d, dict):
+        return {k:getshape(d[k]) for k in d}
+    else:
+        # Replace all non-dict values with None.
+        return None
+
+def train(args, loader, model, criterion, optimizer, log, epoch, recorder, model_CCT):
+    model_CCT.train()
     model.train()
     log.printWrite('---- Start Training Epoch %d: %d batches ----' % (epoch, len(loader)))
     timer = time_utils.Timer(args.time_sync);
@@ -10,16 +18,21 @@ def train(args, loader, model, criterion, optimizer, log, epoch, recorder):
         data = model_utils.parseData(args, sample, timer, 'train')
         input = model_utils.getInput(args, data)
 
-        pred = model(input); timer.updateTime('Forward')
-
+        pred = model(input, model_CCT); timer.updateTime('Forward')
+        #print('pred', getshape(pred), getshape(data))
         optimizer.zero_grad()
-        loss = criterion.forward(pred, data); 
-        timer.updateTime('Crit');
-        criterion.backward(); timer.updateTime('Backward')
+        #optimizer_CCT.zero_grad()
 
+        loss = criterion.forward(pred, data); 
+        #print('loss', loss)
+        timer.updateTime('Crit');
+        
+        criterion.backward(); timer.updateTime('Backward')
+        
         recorder.updateIter('train', loss.keys(), loss.values())
 
         optimizer.step(); timer.updateTime('Solver')
+        #optimizer_CCT.step()
 
         iters = i + 1
         if iters % args.train_disp == 0:
