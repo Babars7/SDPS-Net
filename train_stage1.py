@@ -1,6 +1,11 @@
 from models import model_utils
 from utils  import eval_utils, time_utils
 
+import torch.optim
+import torch.utils.data
+
+
+
 def getshape(d):
     if isinstance(d, dict):
         return {k:getshape(d[k]) for k in d}
@@ -8,8 +13,9 @@ def getshape(d):
         # Replace all non-dict values with None.
         return None
 
-def train(args, loader, model, criterion, optimizer, log, epoch, recorder, model_CCT):
-    model_CCT.train()
+
+
+def train(args, loader, model, criterion, optimizer, log, epoch, recorder):
     model.train()
     log.printWrite('---- Start Training Epoch %d: %d batches ----' % (epoch, len(loader)))
     timer = time_utils.Timer(args.time_sync);
@@ -18,23 +24,29 @@ def train(args, loader, model, criterion, optimizer, log, epoch, recorder, model
         data = model_utils.parseData(args, sample, timer, 'train')
         input = model_utils.getInput(args, data)
 
-        pred = model(input, model_CCT); timer.updateTime('Forward')
-        #print('pred', getshape(pred), getshape(data))
-        optimizer.zero_grad()
-        #optimizer_CCT.zero_grad()
+#########ADDED:
+        #for j in range(len(input)):
+        #    if (not args.no_cuda) and torch.cuda.is_available():
+        #        #print('images', type(images) )
+        #        input[j] = input[j].cuda(args.gpu_id, non_blocking=True)
+        #        #print('images_after', type(images))
+        #        data[i] = data[i].cuda(args.gpu_id, non_blocking=True)
+        ##############
 
+        pred = model(input); timer.updateTime('Forward')
+        #print('pred', getshape(pred), getshape(data))
+        
+        optimizer.zero_grad()
         loss = criterion.forward(pred, data); 
-        #print('loss', loss)
         timer.updateTime('Crit');
-        
         criterion.backward(); timer.updateTime('Backward')
-        
+
         recorder.updateIter('train', loss.keys(), loss.values())
 
         optimizer.step(); timer.updateTime('Solver')
-        #optimizer_CCT.step()
 
         iters = i + 1
+        #print(iters)
         if iters % args.train_disp == 0:
             opt = {'split':'train', 'epoch':epoch, 'iters':iters, 'batch':len(loader), 
                     'timer':timer, 'recorder': recorder}
@@ -68,3 +80,4 @@ def prepareSave(args, data, pred, recorder, log):
         recorder.updateIter('train', acc.keys(), acc.values())
     nrow = data['img'].shape[0] if data['img'].shape[0] <= 32 else 32
     return results, recorder, nrow
+

@@ -13,7 +13,7 @@ def get_itervals(args, split):
     stop_iters = args_var['max_'+split+'_iter']
     return disp_intv, save_intv, stop_iters
 
-def test(args, split, loader, model, log, epoch, recorder, model_CCT):
+def test(args, split, loader, model, log, epoch, recorder):
     model.eval()
     log.printWrite('---- Start %s Epoch %d: %d batches ----' % (split, epoch, len(loader)))
     timer = time_utils.Timer(args.time_sync);
