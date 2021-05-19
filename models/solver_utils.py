@@ -1,8 +1,7 @@
 import torch
 import os
 from utils import eval_utils
-import itertools
-
+from utils.losses import LabelSmoothingCrossEntropy
 
 class Stage1ClsCrit(object): # First Stage, Light classification criterion
     def __init__(self, args):
@@ -16,14 +15,17 @@ class Stage1ClsCrit(object): # First Stage, Light classification criterion
         args.log.printWrite('=> Using light criterion')
         if self.s1_est_d:
             self.dir_w = args.dir_w
-            self.dirs_x_crit = torch.nn.CrossEntropyLoss()
-            self.dirs_y_crit = torch.nn.CrossEntropyLoss()
+            #self.dirs_x_crit = torch.nn.CrossEntropyLoss()
+            #self.dirs_y_crit = torch.nn.CrossEntropyLoss()
+            self.dirs_x_crit = LabelSmoothingCrossEntropy()
+            self.dirs_y_crit = LabelSmoothingCrossEntropy()
             if args.cuda: 
                 self.dirs_x_crit = self.dirs_x_crit.cuda()
                 self.dirs_y_crit = self.dirs_y_crit.cuda()
         if self.s1_est_i:
             self.ints_w = args.ints_w
-            self.ints_crit = torch.nn.CrossEntropyLoss()
+            #self.ints_crit = torch.nn.CrossEntropyLoss()
+            self.ints_crit = LabelSmoothingCrossEntropy()
             if args.cuda: self.ints_crit = self.ints_crit.cuda()
 
     def forward(self, output, target):
@@ -51,7 +53,9 @@ class Stage1ClsCrit(object): # First Stage, Light classification criterion
         return out_loss
      
     def backward(self):
-        #print('loss', self.loss)
+        #print('loss', type(self.loss), self.loss, self.loss.shape)
+        self.loss.requires_grad= True #not sure about that
+        
         self.loss.backward()
 
 class Stage2Crit(object): # Second stage
@@ -118,13 +122,14 @@ class Stage2Crit(object): # Second stage
         return out_loss
 
     def backward(self):
+        #print('loss', type(loss), loss, loss.shape)
+        #loss.requires_grad = True
         self.loss.backward()
 
 def getOptimizer(args, params):
-
     args.log.printWrite('=> Using %s solver for optimization' % (args.solver))
     if args.solver == 'adam':
-        optimizer = torch.optim.Adam(params, args.init_lr, betas=(args.beta_1, args.beta_2))
+        optimizer = torch.optim.Adam(params, args.init_lr, weight_decay=args.weight_decay, betas=(args.beta_1, args.beta_2))#MOdification Adam->AdamW
     elif args.solver == 'sgd':
         optimizer = torch.optim.SGD(params, args.init_lr, momentum=args.momentum)
     else:
@@ -148,14 +153,12 @@ def loadRecords(path, model, optimizer):
         raise Exception("=> no checkpoint found at '{}'".format(path))
     return records, start_epoch
 
-def configOptimizer(args, model, model_CCT):
+def configOptimizer(args, model):
     records = None
-    print('parameters', type(model.parameters()))
-    #optimizer_CCT = getOptimizer(args, itertools.chain(model_CCT.parameters(),model.parameters()))
-    optimizer = getOptimizer(args, itertools.chain(model_CCT.parameters(),model.parameters()))
+    optimizer = getOptimizer(args, model.parameters())
     if args.resume:
         args.log.printWrite("=> Resume loading checkpoint '{}'".format(args.resume))
-        records, start_epoch = loadRecords(args.resume, model_CCT, optimizer )
+        records, start_epoch = loadRecords(args.resume, model, optimizer)
         args.start_epoch = start_epoch
     scheduler = getLrScheduler(args, optimizer)
     return optimizer, scheduler, records
