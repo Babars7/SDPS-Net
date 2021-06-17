@@ -4,7 +4,7 @@ from torch.nn.init import kaiming_normal_
 from . import model_utils
 from utils import eval_utils
 import torch.nn.functional as F
-from .transformers import TransformerEncoderLayer
+#from .transformers import TransformerEncoderLayer
 import argparse
 from time import time
 import math
@@ -15,6 +15,7 @@ import torchvision.datasets as datasets
 from options  import stage1_opts
 from .transformers import TransformerEncoderLayer #Added from cct
 args = stage1_opts.TrainOpts().parse()
+
 
 def getshape(d):
     if isinstance(d, dict):
@@ -40,6 +41,7 @@ class Tokenizer(nn.Module):
         n_filter_list = [n_input_channels] + \
                         [in_planes for _ in range(n_conv_layers - 1)] + \
                         [n_output_channels]
+        
 
         self.conv_layers = nn.Sequential(
             *[nn.Sequential(
@@ -52,22 +54,27 @@ class Tokenizer(nn.Module):
                              stride=pooling_stride,
                              padding=pooling_padding) if max_pool else nn.Identity()
             )
+        
                 for i in range(n_conv_layers)
             ])
 
         self.flattener = nn.Flatten(2, 3)
         self.apply(self.init_weight)
+        #self.Lin = nn.Sequential(nn.Linear(2048, 1024),
+        #                        nn.Linear(1024, 512),
+        #                        nn.Linear(512, 256))
 
-    def sequence_length(self, n_channels=3, height=224, width=224):
+    def sequence_length(self, n_channels=4, height=224, width=224):#n_channels=3
+        print('sequence_length', self.forward(torch.zeros((1, n_channels, height, width))).shape[1])
         return self.forward(torch.zeros((1, n_channels, height, width))).shape[1]
 
     def forward(self, x):
-        #print(x.shape)
-        #print('before conv',x.shape)#Conv + Flatten correspond to the process flattening image and multiply with Embeding matrix and then this will go into encoder
+
+#Conv + Flatten correspond to the process flattening image and multiply with Embeding matrix and then this will go into encoder
         x = self.conv_layers(x)
-        #print('before flat',x.shape)
+
         flat = self.flattener(x)
-        #print('after flat',flat.shape)
+
         return flat.transpose(-2, -1)
 
     @staticmethod
@@ -110,6 +117,9 @@ class TransformerClassifier(nn.Module):
                                           requires_grad=True)
         else:
             self.attention_pool = nn.Linear(self.embedding_dim, 1)
+            #self.attention_pool = nn.Sequential(nn.Linear(embedding_dim, 128),
+            #                    nn.Linear(128, 64),
+            #                    nn.Linear(64, 1))
 
         if positional_embedding != 'none':
             if positional_embedding == 'learnable':
@@ -132,16 +142,25 @@ class TransformerClassifier(nn.Module):
             for i in range(num_layers)])
         self.norm = nn.LayerNorm(embedding_dim)
 
-        #self.fc = nn.Linear(embedding_dim, num_classes)
 
         self.fc_dirx = nn.Linear(embedding_dim, 36) #it is here I have to modify MLP Head
+        #self.fc_dirx = nn.Sequential(nn.Linear(embedding_dim, 128),
+        #                        nn.Linear(128, 64),
+        #                        nn.Linear(64, 36))
         self.apply(self.init_weight)
         self.fc_diry = nn.Linear(embedding_dim, 36)
-        self.apply(self.init_weight)
+        #self.fc_diry = nn.Sequential(nn.Linear(embedding_dim, 128),
+        #                        nn.Linear(128, 64),
+        #                        nn.Linear(64, 36))
         self.fc_intens = nn.Linear(embedding_dim, 20)
+        self.apply(self.init_weight)
+        #self.fc_intens = nn.Sequential(nn.Linear(embedding_dim, 128),
+        #                        nn.Linear(128, 64),
+        #                        nn.Linear(64, 20))
         self.apply(self.init_weight)
 
     def forward(self, x):
+        
         if self.positional_emb is None and x.size(1) < self.sequence_length:
             x = F.pad(x, (0, 0, 0, self.n_channels - x.size(1)), mode='constant', value=0)
 
@@ -151,22 +170,23 @@ class TransformerClassifier(nn.Module):
 
         if self.positional_emb is not None:
             x += self.positional_emb
-
+        
+      
         x = self.dropout(x)
-
+   
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
-
+       
         if self.seq_pool:
             x = torch.matmul(F.softmax(self.attention_pool(x), dim=1).transpose(-1, -2), x).squeeze(-2)
         else:
             x = x[:, 0]
-        #print('before', x.shape, type(x))
+       
         out_x = self.fc_dirx(x)
         out_y = self.fc_diry(x)
         out_ints = self.fc_intens(x)
-        #print(x.shape)
+        
         return out_x, out_y, out_ints
         #return x
 
@@ -207,17 +227,14 @@ class LCViTNet(nn.Module):
         self.other     = other
         img_size = 128
         positional_embedding = 'learnable'
-        conv_layers = 2
+        conv_layers = 1
         conv_size = 3
         patch_size = 4
-        num_layers=2#7 
-        num_heads=2#4 
-        mlp_ratio=1#2 
-        embedding_dim=128#256
+        num_layers=7#7 
+        num_heads=4#4 
+        mlp_ratio=2#2 
+        embedding_dim=256#256
         kernel_size=128
-        #kernel_size=3
-        #stride = stride if stride is not None else max(1, (kernel_size // 2) - 1)
-        #padding = padding if padding is not None else max(1, (kernel_size // 2))
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
@@ -228,7 +245,7 @@ class LCViTNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-#using ViT Lite
+#using ViT Lite 7 with 1 layer of transformer encoder
         self.tokenizer = Tokenizer(n_input_channels=n_input_channels,
                                    n_output_channels=embedding_dim,
                                    kernel_size=128,#patch_size,
@@ -248,7 +265,7 @@ class LCViTNet(nn.Module):
             attention_dropout=0.,
             stochastic_depth=0.,
             num_heads=num_heads,
-            num_layers=num_layers,#Test
+            num_layers=num_layers,
             *args, **kwargs)
 
 
@@ -261,7 +278,8 @@ class LCViTNet(nn.Module):
             print('Rescaling images: from %dX%d to %dX%d' % (h, w, t_h, t_w))
             imgs = torch.nn.functional.upsample(x[0], size=(t_h, t_w), mode='bilinear')
 
-        inputs = list(torch.split(imgs, 3, 1)) #split imgs in every 3 in dimension 1 (32,96,128,128)->(32,3,128,128)
+        #split imgs in every 3 in dimension 1 (32,96,128,128)->(32,3,128,128)
+        inputs = list(torch.split(imgs, 3, 1)) 
         idx = 1
         if self.other['in_light']:
             light = torch.split(x[idx], 3, 1)
@@ -273,14 +291,15 @@ class LCViTNet(nn.Module):
             if mask.shape[2] != inputs[0].shape[2] or mask.shape[3] != inputs[0].shape[3]:
                 mask = torch.nn.functional.upsample(mask, size=(t_h, t_w), mode='bilinear')
             for i in range(len(inputs)):
-                inputs[i] = torch.cat([inputs[i], mask], 1)#(32,3,128,128)->(32,3,128,128)
+                inputs[i] = torch.cat([inputs[i], mask], 1)
+                #(32,3,128,128)->(32,3,128,128)
             idx += 1
         return inputs
 
 
     def convertMidDirs(self, pred):
         _, x_idx = pred['dirs_x'].data.max(1)
-        #print('test', pred['dirs_x'].data.max(1)[1].shape)
+
         _, y_idx = pred['dirs_y'].data.max(1)
         dirs = eval_utils.SphericalClassToDirs(x_idx, y_idx, self.other['dirs_cls'])
         return dirs
@@ -296,33 +315,21 @@ class LCViTNet(nn.Module):
 
     def forward(self, x):
         
-        #print('x:', len(x))
-        #print('x:',list(x[0].shape))
-        #print('x:',list(x[1].shape))
+
         inputs = self.prepareInputs(x)
-        #print(type(inputs))
-        #print('length:', len(inputs))
-        #print('input:',list(inputs[0].shape))
-        #print('input:',list(inputs[1].shape))
-        #print('input:',list(inputs[2].shape))
+
         trans=0
         
-#        for trans in range(len(inputs)):
-#            inputs[trans]=self.stn(inputs[trans])
-
-        #inputs=self.stn(inputs[0])
-        #feats = []
-        #print('len', len(inputs))
-
 
         l_dirs_x, l_dirs_y, l_ints = [], [], []
         for i in range(len(inputs)):
-            #print('bef_token', inputs[i].shape)
+            
+            #out_feat = self.featExtractor(inputs[i])
             x = self.tokenizer(inputs[i])
-            #print('bef_class', x.shape)
+            
             out_x, out_y, out_ints = self.classifier(x)
             #out = self.classifier(x)
-            ##print('after classifier', type(out))
+            
             #out = out.reshape(out.shape[0], out.shape[1], 1, 1)
             ##out = out.clone().detach().requires_grad_(True)
             #out = torch.tensor(out, dtype=torch.float,  device='cuda:0')
@@ -331,7 +338,7 @@ class LCViTNet(nn.Module):
             #out_y = self.dir_y_est(out)
             #out_ints = self.int_est(out)
 
-            #print('outputs_type', getshape(outputs), outputs['dir_x'].shape)
+            
             if self.other['s1_est_d']:
                 l_dirs_x.append(out_x)
                 l_dirs_y.append(out_y)
@@ -340,16 +347,16 @@ class LCViTNet(nn.Module):
 
         pred = {}
         if self.other['s1_est_d']:
-            #print(type(l_dirs_x))
+            
             pred['dirs_x'] = torch.cat(l_dirs_x, 0).squeeze()
             pred['dirs_y'] = torch.cat(l_dirs_y, 0).squeeze()
-            #print('dict', getshape(pred), pred['dirs_x'].shape)
+            
             pred['dirs']   = self.convertMidDirs(pred)
-            #print('dir_x', pred['dirs_x'].shape, pred['dirs_x'][1,:])
+            
         if self.other['s1_est_i']:
             pred['ints'] = torch.cat(l_ints, 0).squeeze()
             if pred['ints'].ndimension() == 1:
                 pred['ints'] = pred['ints'].view(1, -1)
             pred['intens'] = self.convertMidIntens(pred, len(inputs))
-            #print('ints', (pred['ints'][1,:]).shape )
+            
         return pred
